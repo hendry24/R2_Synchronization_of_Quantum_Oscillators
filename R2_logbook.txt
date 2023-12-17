@@ -1,0 +1,17 @@
+2023/11/20	-	Continued pyqosc with [ss_c_spectrum]
+
+2023/11/17-19	-	Took the time off.
+
+2023/11/13-16	- 	Used pyqosc to replicate Walter(2014)'s results.
+
+2023/11/13-15	-	Rewrote the numerical functions into a reusable module, named [pyqosc]
+
+2023/11/11-12	-	Calculated time evolution of number/coherent/thermal state using van der Pol potential.
+
+2023/11/6-10	-	Worked on [1].
+
+2023/11/5	-	Continued [Walter(2014)]. Reproduced the Wigner distribution.
+
+2023/11/3-4	-	Did nothing.
+
+2023/11/2	-	Started reading [Walter(2014)_Let_QSyncSelfSustainedOsc].
