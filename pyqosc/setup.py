@@ -3,7 +3,7 @@ from distutils.core import setup
 setup(
   name = 'pyqosc',         # How you named your package folder (MyLib)
   packages = ['pyqosc'],   # Chose the same as "name"
-  version = '0.0.21',      # Start with a small number and increase it with every change you make
+  version = '0.0.45',      # Start with a small number and increase it with every change you make
   license='GPL-3.0',        # Chose a license from here: https://help.github.com/articles/licensing-a-repository
   description = 'Quantum Oscillators',   # Give a short description about your library
   author = 'Hendry',                   # Type in your name

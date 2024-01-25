@@ -29,20 +29,21 @@ def steady_state(Ham, c_ops, plot_wigner = False, xlim = 6, ylim = 6, overlap_wi
 ################################################################################################################################################################
 ################################################################################################################################################################
 
-def qdistance_to_ss(Ham, c_ops, rho0, timelst, dist_func = qt.fidelity, steadystate = None, 
-                    plot = False, overlap_with=None):
+def qdistance_to_ss(Ham, c_ops, rho_0, timelst, dist_func = qt.fidelity, steadystate = None, 
+                    plot = False, overlap_with=None, ss_err_tol = 1e-3,_stop_at_t_ss = False):
 
-    if not(overlap_with):
-        fig, ax = plt.subplots(1, figsize = (5, 4))
-    else:
-        ax = overlap_with
-        
+    if plot:
+        if not(overlap_with):
+            fig, ax = plt.subplots(1, figsize = (5, 4))
+        else:
+            ax = overlap_with
+            
     if not(steadystate):
         rho_ss = steady_state(Ham, c_ops)
     else:
         rho_ss = steadystate
         
-    rho_t = qt.mesolve(Ham, rho0, timelst, c_ops).states
+    rho_t = qt.mesolve(Ham, rho_0, timelst, c_ops, options = options).states
     
     dist_lst = []
     mark = True
@@ -50,9 +51,13 @@ def qdistance_to_ss(Ham, c_ops, rho0, timelst, dist_func = qt.fidelity, steadyst
         dist_lst.append(dist := dist_func(rho_t[i], rho_ss))
         
         # Mark when steady state is reached.
-        if mark and abs(dist - dist_func(rho_ss, rho_ss)) < 1e-3:
+        if mark and abs(dist - dist_func(rho_ss, rho_ss)) < ss_err_tol:
             mark = False
-            ax.axvline(timelst[i], ls = ":", c = 'r', label = f"steady state reached at \n t = {round(timelst[i], 2)}")
+            t_ss = timelst[i]
+            if _stop_at_t_ss:
+                break
+            if plot:
+                ax.axvline(timelst[i], ls = ":", c = 'r', label = f"steady state reached at \n t = {round(timelst[i], 2)}")
     
     if plot:
         
@@ -73,7 +78,7 @@ def qdistance_to_ss(Ham, c_ops, rho0, timelst, dist_func = qt.fidelity, steadyst
         ax.axhline(1.0, c = "k", ls = ":", alpha = 0.5)
         ax.legend(loc = "best")
         
-    return dist_lst 
+    return dist_lst, t_ss
 
 ################################################################################################################################################################
 ################################################################################################################################################################
@@ -195,11 +200,8 @@ def ss_q_phasedist(rho_ss, num_bins, plot = False, overlap_with = None):
 ################################################################################################################################################################
 ################################################################################################################################################################
 
-def ss_q_spectrum(lindblad, omega = np.linspace(-1, 1, 101), 
+def ss_q_spectrum(Ham, c_ops, b, omega = np.linspace(-1, 1, 101), 
                plot = False, overlap_with = None, label = r"qm"):
-    Ham, c_ops = lindblad
-    N = Ham.dims[0][0]
-    b = qt.destroy(N)
     
     spect = qt.spectrum(Ham, omega, c_ops, b, b.dag())
     spect /= np.max(spect)
@@ -223,7 +225,7 @@ def ss_c_acf(timelst, expval, plot = False, overlap_with = None, **plot_kwargs):
     
     l = len(timelst)
     tlag = [timelst[0] - timelst[-i] for i in range(1, l+1)] + [timelst[i]-timelst[0] for i in range(1, l)]
-
+    
     acf = sp.signal.correlate(expval, expval, mode = "full")
     # The function returns the autocorrelation of beta with respect to lag. The center of
     # the list corresponds to zero lag, while the ends correspond to maximum lag with which
@@ -256,7 +258,7 @@ def ss_c_spectrum(timelst_ss, expval_ss, omega_lim = 1.0, plot = False, plot_bar
 
     spect = np.abs(sp.fft.fft(acf))
     spect /= np.max(spect)
-
+    
     if plot:
         if overlap_with:
             ax = overlap_with
@@ -313,6 +315,113 @@ def ss_qsl_mt(Ham, c_ops, rho_0, timelst, plot = False, overlap_with = None):
 ################################################################################################################################################################
 ################################################################################################################################################################
 
+# def ss_qsl_funo(qosc, rho_0, init_tau = 1, fsolve_xtol = 1e-3, 
+#                 fsolve_maxfev = int(1e6), mesolve_timepoints = 101, quad_limit = 101):
+    
+#     N = qosc.N
+#     Ham, c_ops = qosc.dynamics()
+#     rho_ss = qt.steadystate(Ham, c_ops)
+    
+#     d_tr = qt.tracedist(rho_0, rho_ss)
+    
+#     def rho(t):
+#         '''Get density matrix at time t using mesolve'''
+#         return qt.mesolve(Ham, rho_0, np.linspace(0, t, mesolve_timepoints), c_ops, options = qt.Options(nsteps=int(1e9))).states[-1]
+                    
+#     def D(t):
+#         s = 0
+#         rho_t = rho(t)
+#         for c_op in c_ops:
+#             s += c_op * rho_t * c_op.dag() - 0.5 * qt.commutator(c_op.dag()*c_op, rho_t, kind = "anti")
+#         return s, rho_t
+    
+#     def H_D(t):
+#         D_t, rho_t = D(t)
+#         rho_eigvals, rho_eigstates = rho_t.eigenstates()
+#         out = 0
+#         for m in range(N):
+#             pm = rho_eigvals[m]
+#             bm = rho_eigstates[m]
+#             for n in range(N):
+#                 pn = rho_eigvals[n]
+#                 if pn==pm:
+#                     continue
+#                 bn = rho_eigstates[n]
+#                 out += D_t.matrix_element(bm, bn) / (pn-pm) * bm * bn.dag()
+#         out *= 1j
+#         return out, rho_t
+        
+#     def stdev_sum(t):
+#         H_D_t, rho_t = H_D(t)
+#         return np.sqrt(qt.variance(Ham, rho_t)) + np.sqrt(qt.expect(H_D_t**2, rho_t))
+    
+#     #####
+    
+#     def W(t):
+#         rho_t = rho(t)
+#         rho_eigvals, rho_eigstates = rho_t.eigenstates()
+        
+#         Wmn = np.empty(shape=(len(c_ops),N,N))
+#         # Assuming [gamma] is independent of [omega], [W_{mn}^{omega,alpha}] and [W_{nm}^{-omega,alpha}]
+#         # are identical.
+        
+#         for i in range(len(c_ops)):
+            
+#             omega_is_0 = False
+#             if qt.commutator(c_ops[i],Ham)==0:
+#                 omega_is_0 = True
+            
+#             for m in range(N):
+#                 bm = rho_eigstates[m]
+                
+#                 for n in range(N):
+#                     if m==n and omega_is_0:
+#                         Wmn[i][m][n] = 0
+                    
+#                     bn = rho_eigstates[n]
+                    
+#                     Wmn[i][m][n] = np.abs(bm.overlap(c_ops[i]*bn))**2
+                    
+#         return rho_eigvals, Wmn
+    
+#     def sigma_and_A(t):
+#         p, Wmn = W(t)
+#         sigma = 0
+#         A = 0
+#         for i in range(len(c_ops)):
+#             for m in range(N):
+#                 for n in range(N):
+#                     if p[m]*p[n]>0:
+#                         sigma += Wmn[i][m][n] * p[n] * np.log(p[n]/p[m])
+#                     A += (p[n]+p[m]) * Wmn[i][m][n]
+#         return sigma, A
+                
+#         #####
+#     def funo(tau):
+        
+#         def time_quad(func):
+#             return sp.integrate.quad(func, 0, tau, limit = quad_limit)[0]
+        
+#         timelst = np.linspace(0, tau, quad_limit).flatten()
+#         sigma_lst = np.empty(shape=(quad_limit,))
+#         A_lst = np.empty(shape=(quad_limit,))
+#         sigma_lst[0] = 0
+#         A_lst[0] = 0
+#         for i in range(1, quad_limit):
+#             sigma_lst[i], A_lst[i] = sigma_and_A(float(timelst[i])) # Need to convert to float or qutip mesolve won't work.
+        
+#         def time_trapz(x, y):
+#             return sp.integrate.trapz(y=y, x=x)
+         
+#         qsl = time_quad(stdev_sum) + np.sqrt(0.5 * time_trapz(timelst, sigma_lst) * time_trapz(timelst, A_lst)) - d_tr
+        
+#         if qsl <= 0:
+#             raise ValueError("Invalid value of QSL is obtained. Algorithm fails.")
+        
+#         return qsl 
+        
+#     return sp.optimize.fsolve(funo, init_tau, xtol = fsolve_xtol, maxfev = fsolve_maxfev)[0]
+
 def ss_qsl_funo(qosc, rho_0, init_tau = 1, fsolve_xtol = 1e-3, 
                 fsolve_maxfev = int(1e6), mesolve_timepoints = 101, quad_limit = 101):
     
@@ -333,7 +442,7 @@ def ss_qsl_funo(qosc, rho_0, init_tau = 1, fsolve_xtol = 1e-3,
             s += c_op * rho_t * c_op.dag() - 0.5 * qt.commutator(c_op.dag()*c_op, rho_t, kind = "anti")
         return s, rho_t
     
-    def H_D(t):
+    def tr_H_D_2_rho(t):
         D_t, rho_t = D(t)
         rho_eigvals, rho_eigstates = rho_t.eigenstates()
         out = 0
@@ -345,13 +454,12 @@ def ss_qsl_funo(qosc, rho_0, init_tau = 1, fsolve_xtol = 1e-3,
                 if pn==pm:
                     continue
                 bn = rho_eigstates[n]
-                out += D_t.matrix_element(bm, bn) / (pn-pm) * bm * bn.dag()
-        out *= 1j
+                out += pm * D_t.matrix_element(bm, bn) * D_t.matrix_element(bn, bm) / (pm-pn)**2
         return out, rho_t
         
     def stdev_sum(t):
-        H_D_t, rho_t = H_D(t)
-        return np.sqrt(qt.variance(Ham, rho_t)) + np.sqrt(qt.expect(H_D_t**2, rho_t))
+        tr_H_D_2_rho_t, rho_t = tr_H_D_2_rho(t)
+        return np.sqrt(qt.variance(Ham, rho_t)) + np.sqrt(tr_H_D_2_rho_t)
     
     #####
     
@@ -400,7 +508,7 @@ def ss_qsl_funo(qosc, rho_0, init_tau = 1, fsolve_xtol = 1e-3,
         def time_quad(func):
             return sp.integrate.quad(func, 0, tau, limit = quad_limit)[0]
         
-        timelst = np.linspace(0, tau, quad_limit).flatten()
+        timelst = np.linspace(0, tau, quad_limit).flatten() # fsolve somehow makes this a nested array, so flattening is needed.
         sigma_lst = np.empty(shape=(quad_limit,))
         A_lst = np.empty(shape=(quad_limit,))
         sigma_lst[0] = 0
@@ -416,6 +524,28 @@ def ss_qsl_funo(qosc, rho_0, init_tau = 1, fsolve_xtol = 1e-3,
         if qsl <= 0:
             raise ValueError("Invalid value of QSL is obtained. Algorithm fails.")
         
-        return qsl 
+        return qsl
         
     return sp.optimize.fsolve(funo, init_tau, xtol = fsolve_xtol, maxfev = fsolve_maxfev)[0]
+
+################################################################################################################################################################
+################################################################################################################################################################
+
+def ss_qsl_delcampo(qosc, rho_0, init_tau = 1, fsolve_xtol = 1e-3, 
+                    fsolve_maxfev = int(1e6), mesolve_timepoints = 101, quad_limit = 101):
+    
+    # TODO: Incorporate time-dependent Linbladian.
+    
+    Ham, c_ops = qosc.dynamics()
+    rho_ss = qt.steadystate(Ham, c_ops)
+    
+    Ldag_rho_0 = 1j * qt.commutator(Ham, rho_0)
+    for i in range(len(c_ops)):
+        F = c_ops[i]
+        Ldag_rho_0 += F.dag()*rho_0*F - 0.5 * qt.commutator(F.dag()*F, rho_0, "anti")
+        
+    fig_merit = ((rho_0*rho_ss).tr())/((rho_0**2).tr())
+    tau_qsl = np.abs(fig_merit-1)*(rho_0**2).tr()/np.sqrt((Ldag_rho_0**2).tr())
+    
+    return tau_qsl
+    

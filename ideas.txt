@@ -1,0 +1,2 @@
+change in coherence for coupled quantum oscillators
+keeping a quantum oscillator synchronized against external perturbation
